@@ -240,8 +240,8 @@
       3 values below with your own GitHub username/repo before deploying.
    ========================================================================= */
 const GITHUB_CONFIG = {
-  owner:  "TuyongDonation",   // TODO: e.g. "TuyongDonation"
-  repo:   "TuyongDonation.github.io",         // TODO: e.g. "TuyongDonation.github.io"
+  owner:  "YOUR_GITHUB_USERNAME",   // TODO: e.g. "derma3"
+  repo:   "YOUR_REPO_NAME",         // TODO: e.g. "derma3.github.io"
   branch: "main",
   path:   "data.json"
 };
@@ -295,13 +295,23 @@ async function githubGetSha(){
   }catch(e){ return null; }
 }
 async function githubTestToken(token){
+  if(!isGithubConfigured()) return {ok:false, reason:'not-configured'};
   try{
     const url = `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}`;
-    const res = await fetch(url, {headers:{Authorization:`Bearer ${token}`}});
-    if(!res.ok) return false;
+    const res = await fetch(url, {headers:{
+      Authorization:`Bearer ${token}`,
+      Accept:'application/vnd.github+json'
+    }});
+    if(res.status === 401) return {ok:false, reason:'bad-token'};
+    if(res.status === 404) return {ok:false, reason:'not-found'};
+    if(!res.ok) return {ok:false, reason:'other', status:res.status};
     const j = await res.json();
-    return !!(j.permissions && j.permissions.push);
-  }catch(e){ return false; }
+    // Some fine-grained tokens don't return a `permissions` object even with write access,
+    // so only fail here if it's explicitly present and explicitly false — otherwise allow
+    // login and let the actual save attempt confirm write access.
+    if(j.permissions && j.permissions.push === false) return {ok:false, reason:'read-only'};
+    return {ok:true};
+  }catch(e){ return {ok:false, reason:'network'}; }
 }
 async function githubSaveData(){
   if(!githubToken) return false;
@@ -639,11 +649,19 @@ async function doGithubLogin(){
 
   const btn = document.getElementById('ghLoginBtn');
   btn.disabled = true; btn.textContent = 'กำลังตรวจสอบ...';
-  const valid = await githubTestToken(token);
+  const result = await githubTestToken(token);
   btn.disabled = false; btn.textContent = 'เข้าสู่ระบบ';
 
-  if(!valid){
-    err.textContent = 'Token ไม่ถูกต้อง หรือไม่มีสิทธิ์เขียนไฟล์ใน repo นี้';
+  if(!result.ok){
+    const messages = {
+      'bad-token':    'Token ไม่ถูกต้องหรือหมดอายุแล้ว ลองสร้าง Token ใหม่',
+      'not-found':    `ไม่พบ repo "${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}" — เช็คว่า GITHUB_CONFIG ในไฟล์ตรงกับชื่อ owner/repo จริง (ตัวพิมพ์เล็ก-ใหญ่ต้องตรงเป๊ะ) และ Token มีสิทธิ์เข้าถึง repo นี้`,
+      'read-only':    'Token นี้มีสิทธิ์อ่านอย่างเดียว ไปที่ GitHub → Settings → Tokens แล้วตั้ง Permissions → Contents เป็น "Read and write"',
+      'not-configured':'ยังไม่ได้ตั้งค่า GITHUB_CONFIG ในไฟล์นี้',
+      'network':      'เชื่อมต่อ GitHub ไม่ได้ ลองเช็คอินเทอร์เน็ตแล้วลองใหม่',
+      'other':        `เกิดข้อผิดพลาด (รหัส ${result.status||'ไม่ทราบ'}) ลองใหม่อีกครั้ง`
+    };
+    err.textContent = messages[result.reason] || 'เข้าสู่ระบบไม่สำเร็จ';
     err.style.display = 'block';
     return;
   }
