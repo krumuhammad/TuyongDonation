@@ -237,8 +237,16 @@ async function storeGet(key, shared){
   catch(e){ return null; }
 }
 async function storeSet(key, value, shared){
-  if(!STORAGE_AVAILABLE) return;
-  try{ await window.storage.set(key, value, shared); }catch(e){ console.error(e); }
+  if(!STORAGE_AVAILABLE) return false;
+  try{
+    const result = await window.storage.set(key, value, shared);
+    return !!result;
+  }catch(e){ console.error('storage set failed', e); return false; }
+}
+async function storeDelete(key, shared){
+  if(!STORAGE_AVAILABLE) return false;
+  try{ await window.storage.delete(key, shared); return true; }
+  catch(e){ return false; }
 }
 
 /* ---------- State ---------- */
@@ -251,20 +259,66 @@ let donations = [];
 let currentAdmin = null; // {username} while logged in this session only
 
 /* ---------- Init ---------- */
-async function init(){
+let lastConfigRaw = null;
+let lastDonationsRaw = null;
+
+async function loadRemoteData(){
   const cfgRaw = await storeGet('donation-config', true);
-  if(cfgRaw){ try{ config = JSON.parse(cfgRaw); }catch(e){} }
-  else { await storeSet('donation-config', JSON.stringify(config), true); }
+  if(cfgRaw && cfgRaw !== lastConfigRaw){
+    try{ config = JSON.parse(cfgRaw); lastConfigRaw = cfgRaw; }catch(e){}
+  } else if(!cfgRaw && lastConfigRaw === null){
+    await storeSet('donation-config', JSON.stringify(config), true);
+    lastConfigRaw = JSON.stringify(config);
+  }
 
   const donRaw = await storeGet('donation-entries', true);
-  if(donRaw){ try{ donations = JSON.parse(donRaw); }catch(e){} }
+  if(donRaw && donRaw !== lastDonationsRaw){
+    try{ donations = JSON.parse(donRaw); lastDonationsRaw = donRaw; }catch(e){}
+  } else if(!donRaw && lastDonationsRaw === null){
+    lastDonationsRaw = JSON.stringify(donations);
+  }
+}
+
+async function init(){
+  await loadRemoteData();
+
+  // Restore admin login session if this browser/account was logged in before
+  const sessionRaw = await storeGet('admin-session', false);
+  if(sessionRaw){
+    try{
+      const sess = JSON.parse(sessionRaw);
+      if(sess && sess.username && config.admins.find(a=>a.username===sess.username)){
+        currentAdmin = { username: sess.username };
+      }
+    }catch(e){}
+  }
 
   document.getElementById('shareLink').textContent = window.location.href.split('#')[0].split('?')[0];
   render();
+
+  // Real-time-ish sync: poll for changes made by other tabs/admins
+  setInterval(async ()=>{
+    if(document.getElementById('modalRoot').innerHTML.trim() !== '') return; // don't disturb an open modal
+    const beforeCfg = lastConfigRaw, beforeDon = lastDonationsRaw;
+    await loadRemoteData();
+    if(lastConfigRaw !== beforeCfg || lastDonationsRaw !== beforeDon){
+      render();
+    }
+  }, 4000);
 }
 
-async function saveConfig(){ await storeSet('donation-config', JSON.stringify(config), true); }
-async function saveDonations(){ await storeSet('donation-entries', JSON.stringify(donations), true); }
+async function saveConfig(){
+  const raw = JSON.stringify(config);
+  const ok = await storeSet('donation-config', raw, true);
+  if(ok) lastConfigRaw = raw;
+  return ok;
+}
+async function saveDonations(){
+  const raw = JSON.stringify(donations);
+  const ok = await storeSet('donation-entries', raw, true);
+  if(ok) lastDonationsRaw = raw;
+  return ok;
+}
 
 /* ---------- Rendering ---------- */
 function thaiDate(iso){
@@ -358,26 +412,51 @@ function escapeHtml(s){
 
 /* ---------- Donations ---------- */
 async function addDonation(){
-  const name = document.getElementById('donorName').value.trim() || '-';
-  const amount = parseFloat(document.getElementById('donorAmount').value);
-  const note = document.getElementById('donorNote').value.trim();
-  if(!amount || amount<=0){ showToast('กรุณาระบุจำนวนเงินให้ถูกต้อง'); return; }
-  donations.push({
+  if(!currentAdmin){ showToast('กรุณาเข้าสู่ระบบก่อน'); return; }
+  const nameInput = document.getElementById('donorName');
+  const amountInput = document.getElementById('donorAmount');
+  const noteInput = document.getElementById('donorNote');
+  const name = nameInput.value.trim() || '-';
+  const amount = parseFloat(amountInput.value);
+  const note = noteInput.value.trim();
+  if(isNaN(amount) || amount<=0){ showToast('กรุณาระบุจำนวนเงินให้ถูกต้อง'); return; }
+
+  const saveBtn = document.querySelector('#addFormCard .btn-green');
+  if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'กำลังบันทึก...'; }
+
+  const entry = {
     id: 'd'+Date.now()+Math.random().toString(36).slice(2,7),
     date: new Date().toISOString(),
     name, amount, note, addedBy: currentAdmin.username
-  });
-  await saveDonations();
-  document.getElementById('donorName').value='';
-  document.getElementById('donorAmount').value='';
-  document.getElementById('donorNote').value='';
+  };
+  donations.push(entry);
+  const ok = await saveDonations();
+
+  if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'บันทึก'; }
+
+  if(!ok){
+    // Roll back the local change since it wasn't actually persisted
+    donations = donations.filter(d=>d.id!==entry.id);
+    showToast('บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+    return;
+  }
+
+  nameInput.value='';
+  amountInput.value='';
+  noteInput.value='';
   render();
   showToast('บันทึกยอดบริจาคแล้ว');
 }
 async function deleteDonation(id){
   if(!confirm('ต้องการลบรายการนี้ใช่หรือไม่?')) return;
+  const backup = donations;
   donations = donations.filter(d=>d.id!==id);
-  await saveDonations();
+  const ok = await saveDonations();
+  if(!ok){
+    donations = backup;
+    showToast('ลบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+    return;
+  }
   render();
   showToast('ลบรายการแล้ว');
 }
@@ -399,7 +478,7 @@ function openLogin(){
       </div>
     </div>`;
 }
-function doLogin(){
+async function doLogin(){
   const u = document.getElementById('loginUser').value.trim();
   const p = document.getElementById('loginPass').value;
   const found = (config.admins||[]).find(a=>a.username===u && a.password===p);
@@ -410,13 +489,15 @@ function doLogin(){
     return;
   }
   currentAdmin = {username: found.username};
+  await storeSet('admin-session', JSON.stringify({username: found.username}), false);
   closeModal();
   render();
   showToast('เข้าสู่ระบบสำเร็จ');
 }
-function logout(){
+async function logout(){
   currentAdmin = null;
   menuOpen = false;
+  await storeDelete('admin-session', false);
   render();
 }
 
@@ -467,7 +548,8 @@ async function saveSettingsModal(){
     if(label || detail) newChannels.push({label, detail});
   });
   config.channels = newChannels;
-  await saveConfig();
+  const ok = await saveConfig();
+  if(!ok){ showToast('บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'); return; }
   closeModal();
   render();
   showToast('บันทึกการตั้งค่าแล้ว');
@@ -513,13 +595,24 @@ async function addAdmin(){
     return;
   }
   config.admins.push({username:u, password:p});
-  await saveConfig();
+  const ok = await saveConfig();
+  if(!ok){
+    config.admins.pop();
+    showToast('บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+    return;
+  }
   openAdmins();
   showToast('เพิ่มสมาชิกแล้ว');
 }
 async function removeAdmin(i){
-  config.admins.splice(i,1);
-  await saveConfig();
+  const backup = config.admins;
+  config.admins = config.admins.filter((_,idx)=>idx!==i);
+  const ok = await saveConfig();
+  if(!ok){
+    config.admins = backup;
+    showToast('ลบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+    return;
+  }
   openAdmins();
 }
 
