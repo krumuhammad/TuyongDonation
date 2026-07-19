@@ -229,6 +229,26 @@
 <div id="toastRoot"></div>
 
 <script>
+/* =========================================================================
+   BACKEND CONFIG
+   -------------------------------------------------------------------------
+   This app can run on two backends:
+   1) Claude's built-in storage (window.storage) — works automatically
+      while you're previewing this inside Claude. No setup needed.
+   2) GitHub-backed storage — used automatically once you deploy this file
+      to GitHub Pages (where window.storage does not exist). Fill in the
+      3 values below with your own GitHub username/repo before deploying.
+   ========================================================================= */
+const GITHUB_CONFIG = {
+  owner:  "YOUR_GITHUB_USERNAME",   // TODO: e.g. "TuyongDonation"
+  repo:   "YOUR_REPO_NAME",         // TODO: e.g. "TuyongDonation.github.io"
+  branch: "main",
+  path:   "data.json"
+};
+function isGithubConfigured(){
+  return GITHUB_CONFIG.owner !== "YOUR_GITHUB_USERNAME" && GITHUB_CONFIG.repo !== "YOUR_REPO_NAME";
+}
+
 /* ---------- Storage helpers (Claude artifact persistent storage) ---------- */
 const STORAGE_AVAILABLE = typeof window.storage !== 'undefined';
 async function storeGet(key, shared){
@@ -249,6 +269,60 @@ async function storeDelete(key, shared){
   catch(e){ return false; }
 }
 
+/* ---------- GitHub-backed storage (used when deployed outside Claude) ---------- */
+let githubToken = null;      // entered at admin login, kept in memory only — never saved anywhere
+let githubFileSha = null;    // tracks the current file version to avoid overwrite conflicts
+
+function utf8ToBase64(str){
+  return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (_,p)=>String.fromCharCode(parseInt(p,16))));
+}
+async function githubFetchData(){
+  try{
+    const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.path}?t=${Date.now()}`;
+    const res = await fetch(url, {cache:'no-store'});
+    if(!res.ok) return null;
+    return await res.json();
+  }catch(e){ return null; }
+}
+async function githubGetSha(){
+  try{
+    const url = `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.path}?ref=${GITHUB_CONFIG.branch}`;
+    const headers = githubToken ? {Authorization:`Bearer ${githubToken}`} : {};
+    const res = await fetch(url, {headers});
+    if(!res.ok) return null;
+    const j = await res.json();
+    return j.sha || null;
+  }catch(e){ return null; }
+}
+async function githubTestToken(token){
+  try{
+    const url = `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}`;
+    const res = await fetch(url, {headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok) return false;
+    const j = await res.json();
+    return !!(j.permissions && j.permissions.push);
+  }catch(e){ return false; }
+}
+async function githubSaveData(){
+  if(!githubToken) return false;
+  try{
+    const sha = await githubGetSha();
+    const body = {
+      message: `อัปเดตยอดบริจาค ${new Date().toISOString()}`,
+      content: utf8ToBase64(JSON.stringify({config, donations}, null, 2)),
+      branch: GITHUB_CONFIG.branch
+    };
+    if(sha) body.sha = sha;
+    const res = await fetch(`https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.path}`, {
+      method:'PUT',
+      headers:{ 'Authorization':`Bearer ${githubToken}`, 'Content-Type':'application/json' },
+      body: JSON.stringify(body)
+    });
+    if(res.ok){ const j = await res.json(); githubFileSha = j.content ? j.content.sha : null; return true; }
+    return false;
+  }catch(e){ console.error('github save failed', e); return false; }
+}
+
 /* ---------- State ---------- */
 let config = {
   orgName: "โรงเรียนบ้านตูหยง",
@@ -263,19 +337,30 @@ let lastConfigRaw = null;
 let lastDonationsRaw = null;
 
 async function loadRemoteData(){
-  const cfgRaw = await storeGet('donation-config', true);
-  if(cfgRaw && cfgRaw !== lastConfigRaw){
-    try{ config = JSON.parse(cfgRaw); lastConfigRaw = cfgRaw; }catch(e){}
-  } else if(!cfgRaw && lastConfigRaw === null){
-    await storeSet('donation-config', JSON.stringify(config), true);
-    lastConfigRaw = JSON.stringify(config);
-  }
-
-  const donRaw = await storeGet('donation-entries', true);
-  if(donRaw && donRaw !== lastDonationsRaw){
-    try{ donations = JSON.parse(donRaw); lastDonationsRaw = donRaw; }catch(e){}
-  } else if(!donRaw && lastDonationsRaw === null){
-    lastDonationsRaw = JSON.stringify(donations);
+  if(STORAGE_AVAILABLE){
+    const cfgRaw = await storeGet('donation-config', true);
+    if(cfgRaw && cfgRaw !== lastConfigRaw){
+      try{ config = JSON.parse(cfgRaw); lastConfigRaw = cfgRaw; }catch(e){}
+    } else if(!cfgRaw && lastConfigRaw === null){
+      await storeSet('donation-config', JSON.stringify(config), true);
+      lastConfigRaw = JSON.stringify(config);
+    }
+    const donRaw = await storeGet('donation-entries', true);
+    if(donRaw && donRaw !== lastDonationsRaw){
+      try{ donations = JSON.parse(donRaw); lastDonationsRaw = donRaw; }catch(e){}
+    } else if(!donRaw && lastDonationsRaw === null){
+      lastDonationsRaw = JSON.stringify(donations);
+    }
+  } else if(isGithubConfigured()){
+    const data = await githubFetchData();
+    if(data){
+      const raw = JSON.stringify(data);
+      if(raw !== lastConfigRaw){
+        if(data.config) config = data.config;
+        if(data.donations) donations = data.donations;
+        lastConfigRaw = raw;
+      }
+    }
   }
 }
 
@@ -283,41 +368,74 @@ async function init(){
   await loadRemoteData();
 
   // Restore admin login session if this browser/account was logged in before
-  const sessionRaw = await storeGet('admin-session', false);
-  if(sessionRaw){
-    try{
-      const sess = JSON.parse(sessionRaw);
-      if(sess && sess.username && config.admins.find(a=>a.username===sess.username)){
-        currentAdmin = { username: sess.username };
-      }
-    }catch(e){}
+  // (only possible in Claude-storage mode — GitHub-token mode requires re-login after refresh, by design, so the token is never written to disk)
+  if(STORAGE_AVAILABLE){
+    const sessionRaw = await storeGet('admin-session', false);
+    if(sessionRaw){
+      try{
+        const sess = JSON.parse(sessionRaw);
+        if(sess && sess.username && config.admins.find(a=>a.username===sess.username)){
+          currentAdmin = { username: sess.username };
+        }
+      }catch(e){}
+    }
   }
 
   document.getElementById('shareLink').textContent = window.location.href.split('#')[0].split('?')[0];
+  renderBackendBanner();
   render();
 
-  // Real-time-ish sync: poll for changes made by other tabs/admins
+  // Real-time-ish sync: poll for changes made by other tabs/admins.
+  // Claude storage updates near-instantly; GitHub Pages/raw.githubusercontent
+  // caching means other visitors may take a bit longer to see updates.
   setInterval(async ()=>{
     if(document.getElementById('modalRoot').innerHTML.trim() !== '') return; // don't disturb an open modal
-    const beforeCfg = lastConfigRaw, beforeDon = lastDonationsRaw;
+    const before = lastConfigRaw;
     await loadRemoteData();
-    if(lastConfigRaw !== beforeCfg || lastDonationsRaw !== beforeDon){
+    if(lastConfigRaw !== before){
       render();
     }
-  }, 4000);
+  }, STORAGE_AVAILABLE ? 4000 : 15000);
+}
+
+function renderBackendBanner(){
+  const existing = document.getElementById('backendBanner');
+  if(existing) existing.remove();
+  if(STORAGE_AVAILABLE || isGithubConfigured()) return;
+  const banner = document.createElement('div');
+  banner.id = 'backendBanner';
+  banner.style.cssText = 'background:#FFF4E5;color:#8A5A00;font-size:13px;text-align:center;padding:10px 16px;border-bottom:1px solid #F0D9A8;';
+  banner.textContent = 'ยังไม่ได้ตั้งค่าฐานข้อมูล — แก้ไข GITHUB_CONFIG ที่ต้นไฟล์ index.html ก่อนใช้งานจริง (ข้อมูลตอนนี้จะไม่ถูกบันทึกถาวร)';
+  document.body.insertBefore(banner, document.body.firstChild);
 }
 
 async function saveConfig(){
-  const raw = JSON.stringify(config);
-  const ok = await storeSet('donation-config', raw, true);
-  if(ok) lastConfigRaw = raw;
-  return ok;
+  if(STORAGE_AVAILABLE){
+    const raw = JSON.stringify(config);
+    const ok = await storeSet('donation-config', raw, true);
+    if(ok) lastConfigRaw = raw;
+    return ok;
+  }
+  if(isGithubConfigured()){
+    const ok = await githubSaveData();
+    if(ok) lastConfigRaw = JSON.stringify({config, donations});
+    return ok;
+  }
+  return false;
 }
 async function saveDonations(){
-  const raw = JSON.stringify(donations);
-  const ok = await storeSet('donation-entries', raw, true);
-  if(ok) lastDonationsRaw = raw;
-  return ok;
+  if(STORAGE_AVAILABLE){
+    const raw = JSON.stringify(donations);
+    const ok = await storeSet('donation-entries', raw, true);
+    if(ok) lastDonationsRaw = raw;
+    return ok;
+  }
+  if(isGithubConfigured()){
+    const ok = await githubSaveData();
+    if(ok) lastConfigRaw = JSON.stringify({config, donations});
+    return ok;
+  }
+  return false;
 }
 
 /* ---------- Rendering ---------- */
@@ -378,7 +496,7 @@ function toggleMenu(){
   host.innerHTML = `
     <div class="menu">
       <button onclick="openSettings()">ตั้งค่าองค์กร</button>
-      <button onclick="openAdmins()">จัดการสมาชิก</button>
+      ${STORAGE_AVAILABLE ? '<button onclick="openAdmins()">จัดการสมาชิก</button>' : ''}
       <button onclick="exportExcel()">⬇ ดาวน์โหลด Excel</button>
       <button class="danger" onclick="logout()">ออกจากระบบ</button>
     </div>`;
@@ -463,17 +581,35 @@ async function deleteDonation(id){
 
 /* ---------- Auth ---------- */
 function openLogin(){
+  if(STORAGE_AVAILABLE){
+    document.getElementById('modalRoot').innerHTML = `
+      <div class="overlay" onclick="if(event.target===this) closeModal()">
+        <div class="modal">
+          <h2>เข้าสู่ระบบผู้ดูแล</h2>
+          <div class="sub">สำหรับผู้บันทึกยอดบริจาคเท่านั้น</div>
+          <div class="field"><label>ชื่อผู้ใช้</label><input id="loginUser" type="text"></div>
+          <div class="field"><label>รหัสผ่าน</label><input id="loginPass" type="password"></div>
+          <div class="err" id="loginErr" style="display:none;"></div>
+          <div class="modal-actions">
+            <button class="btn btn-outline" onclick="closeModal()">ยกเลิก</button>
+            <button class="btn btn-green" onclick="doLogin()">เข้าสู่ระบบ</button>
+          </div>
+        </div>
+      </div>`;
+    return;
+  }
+  // GitHub-backed deployment: log in with a GitHub Personal Access Token instead of a password
   document.getElementById('modalRoot').innerHTML = `
     <div class="overlay" onclick="if(event.target===this) closeModal()">
       <div class="modal">
         <h2>เข้าสู่ระบบผู้ดูแล</h2>
-        <div class="sub">สำหรับผู้บันทึกยอดบริจาคเท่านั้น</div>
-        <div class="field"><label>ชื่อผู้ใช้</label><input id="loginUser" type="text"></div>
-        <div class="field"><label>รหัสผ่าน</label><input id="loginPass" type="password"></div>
+        <div class="sub">ใช้ GitHub Personal Access Token ของคุณ (ไม่ถูกบันทึกไว้ที่ไหน หมดอายุเมื่อปิดหรือรีเฟรชหน้า)</div>
+        <div class="field"><label>ชื่อที่แสดง</label><input id="loginUser" type="text" placeholder="เช่น ครูมูฮัมหมัด"></div>
+        <div class="field"><label>GitHub Token</label><input id="loginToken" type="password" placeholder="ghp_xxxxxxxxxxxx"></div>
         <div class="err" id="loginErr" style="display:none;"></div>
         <div class="modal-actions">
           <button class="btn btn-outline" onclick="closeModal()">ยกเลิก</button>
-          <button class="btn btn-green" onclick="doLogin()">เข้าสู่ระบบ</button>
+          <button class="btn btn-green" id="ghLoginBtn" onclick="doGithubLogin()">เข้าสู่ระบบ</button>
         </div>
       </div>
     </div>`;
@@ -494,8 +630,32 @@ async function doLogin(){
   render();
   showToast('เข้าสู่ระบบสำเร็จ');
 }
+async function doGithubLogin(){
+  const u = document.getElementById('loginUser').value.trim() || 'Admin';
+  const token = document.getElementById('loginToken').value.trim();
+  const err = document.getElementById('loginErr');
+  if(!token){ err.textContent = 'กรุณากรอก Token'; err.style.display='block'; return; }
+  if(!isGithubConfigured()){ err.textContent = 'ยังไม่ได้ตั้งค่า GITHUB_CONFIG ในไฟล์นี้'; err.style.display='block'; return; }
+
+  const btn = document.getElementById('ghLoginBtn');
+  btn.disabled = true; btn.textContent = 'กำลังตรวจสอบ...';
+  const valid = await githubTestToken(token);
+  btn.disabled = false; btn.textContent = 'เข้าสู่ระบบ';
+
+  if(!valid){
+    err.textContent = 'Token ไม่ถูกต้อง หรือไม่มีสิทธิ์เขียนไฟล์ใน repo นี้';
+    err.style.display = 'block';
+    return;
+  }
+  githubToken = token;
+  currentAdmin = {username: u};
+  closeModal();
+  render();
+  showToast('เข้าสู่ระบบสำเร็จ');
+}
 async function logout(){
   currentAdmin = null;
+  githubToken = null;
   menuOpen = false;
   await storeDelete('admin-session', false);
   render();
