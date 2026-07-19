@@ -1,0 +1,29 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() { return request.auth != null; }
+    function staffDoc() { return get(/databases/$(database)/documents/staff/$(request.auth.uid)); }
+    function isStaff()  { return isSignedIn() && staffDoc().data.role in ['entry','admin']; }
+    function isAdmin()  { return isSignedIn() && staffDoc().data.role == 'admin'; }
+
+    // หน้าแสดงผลทั่วไป: อ่านได้อย่างเดียว ไม่ต้องล็อกอิน
+    match /donations/{id} {
+      allow read: if true;
+      allow create: if isStaff();
+      allow update, delete: if isAdmin();
+    }
+
+    // ตั้งค่าแคมเปญ (ชื่องาน/เป้าหมาย): ใครก็อ่านได้ แก้ได้เฉพาะแอดมิน
+    match /config/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // บัญชีเจ้าหน้าที่: อ่าน/เขียนได้เฉพาะแอดมิน (และเจ้าของอ่านของตัวเองได้เพื่อเช็คสิทธิ์ตอนล็อกอิน)
+    match /staff/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      allow write: if isAdmin();
+    }
+  }
+}

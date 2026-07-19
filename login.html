@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>เข้าสู่ระบบ — ระบบบันทึกยอดบริจาค</title>
+<link rel="stylesheet" href="./assets/style.css">
+</head>
+<body>
+<div class="center-page">
+  <div class="card" style="width:min(400px,92vw);">
+    <div class="eyebrow" style="margin-bottom:8px;">ระบบบันทึกยอดบริจาค</div>
+    <h2 style="margin:0 0 18px;">เข้าสู่ระบบเจ้าหน้าที่</h2>
+
+    <div class="msg msg-error" id="errMsg"></div>
+
+    <form id="loginForm">
+      <label for="email">อีเมล</label>
+      <input id="email" type="email" required placeholder="staff@example.com">
+      <label for="pass">รหัสผ่าน</label>
+      <input id="pass" type="password" required placeholder="••••••••">
+      <button type="submit" class="btn-primary" id="submitBtn" style="width:100%;">เข้าสู่ระบบ</button>
+    </form>
+    <p style="margin-top:16px;"><a href="./index.html">← กลับหน้าแสดงผลยอดบริจาค</a></p>
+  </div>
+</div>
+
+<script type="module">
+import { auth, signInWithEmailAndPassword, getStaffRole } from "./assets/firebase-init.js";
+
+const form = document.getElementById('loginForm');
+const errMsg = document.getElementById('errMsg');
+const submitBtn = document.getElementById('submitBtn');
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  errMsg.style.display = 'none';
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'กำลังเข้าสู่ระบบ…';
+  const email = document.getElementById('email').value.trim();
+  const pass = document.getElementById('pass').value;
+
+  try{
+    const cred = await signInWithEmailAndPassword(auth, email, pass);
+    const role = await getStaffRole(cred.user.uid);
+    if (!role){
+      errMsg.textContent = 'บัญชีนี้ยังไม่ได้รับสิทธิ์ใช้งานระบบ กรุณาติดต่อผู้ดูแลระบบ';
+      errMsg.style.display = 'block';
+      submitBtn.disabled = false; submitBtn.textContent = 'เข้าสู่ระบบ';
+      return;
+    }
+    if (role.role === 'admin') window.location.href = './admin.html';
+    else window.location.href = './entry.html';
+  }catch(err){
+    errMsg.textContent = 'อีเมลหรือรหัสผ่านไม่ถูกต้อง';
+    errMsg.style.display = 'block';
+    submitBtn.disabled = false; submitBtn.textContent = 'เข้าสู่ระบบ';
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>บันทึกยอดบริจาค — เจ้าหน้าที่กรอก</title>
+<link rel="stylesheet" href="./assets/style.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><span class="dot"></span> ระบบบันทึกยอดบริจาค</div>
+  <nav>
+    <span id="userLabel" style="color:var(--text-muted);font-size:.9rem;"></span>
+    <a href="./index.html" target="_blank">หน้าจอแสดงผล ↗</a>
+    <a href="#" id="logoutLink">ออกจากระบบ</a>
+  </nav>
+</div>
+
+<div class="shell" style="max-width:640px;">
+  <h2>กรอกรายการบริจาคใหม่</h2>
+  <div class="card">
+    <div class="msg msg-error" id="errMsg"></div>
+    <div class="msg msg-ok" id="okMsg"></div>
+    <form id="entryForm">
+      <label for="name">ชื่อผู้บริจาค (หากไม่ระบุจะแสดงว่า "ไม่ระบุชื่อ")</label>
+      <input id="name" type="text" placeholder="เช่น คุณสมชาย ใจดี">
+
+      <label for="amount">จำนวนเงิน (บาท) *</label>
+      <input id="amount" type="number" min="1" step="1" required placeholder="เช่น 500">
+
+      <label for="note">หมายเหตุ (ถ้ามี)</label>
+      <input id="note" type="text" placeholder="เช่น โอนผ่านธนาคาร, ใส่ตู้บริจาค">
+
+      <button type="submit" class="btn-primary" id="submitBtn" style="width:100%;">＋ บันทึกยอดบริจาค</button>
+    </form>
+  </div>
+
+  <h3>รายการล่าสุดที่คุณบันทึก</h3>
+  <div class="card">
+    <table>
+      <thead><tr><th>เวลา</th><th>ชื่อ</th><th>จำนวนเงิน</th><th>หมายเหตุ</th></tr></thead>
+      <tbody id="recentBody"><tr><td colspan="4" style="color:var(--text-muted);">ยังไม่มีรายการ</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<script type="module">
+import {
+  auth, db, onAuthStateChanged, signOut, getStaffRole,
+  collection, addDoc, serverTimestamp, onSnapshot, query, orderBy, limit
+} from "./assets/firebase-init.js";
+
+const errMsg = document.getElementById('errMsg');
+const okMsg = document.getElementById('okMsg');
+const submitBtn = document.getElementById('submitBtn');
+const recentBody = document.getElementById('recentBody');
+const userLabel = document.getElementById('userLabel');
+
+let currentUid = null;
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user){ window.location.href = './login.html'; return; }
+  const role = await getStaffRole(user.uid);
+  if (!role || (role.role !== 'entry' && role.role !== 'admin')){
+    await signOut(auth);
+    window.location.href = './login.html';
+    return;
+  }
+  currentUid = user.uid;
+  userLabel.textContent = role.displayName || user.email;
+  listenRecent(user.uid);
+});
+
+document.getElementById('logoutLink').addEventListener('click', async (e)=>{
+  e.preventDefault();
+  await signOut(auth);
+  window.location.href = './login.html';
+});
+
+document.getElementById('entryForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  errMsg.style.display='none'; okMsg.style.display='none';
+  const name = document.getElementById('name').value.trim();
+  const amount = Number(document.getElementById('amount').value);
+  const note = document.getElementById('note').value.trim();
+
+  if (!amount || amount <= 0){
+    errMsg.textContent = 'กรุณากรอกจำนวนเงินให้ถูกต้อง';
+    errMsg.style.display='block';
+    return;
+  }
+  submitBtn.disabled = true; submitBtn.textContent = 'กำลังบันทึก…';
+  try{
+    await addDoc(collection(db,'donations'), {
+      name: name || 'ไม่ระบุชื่อ',
+      amount,
+      note,
+      createdAt: serverTimestamp(),
+      createdBy: currentUid
+    });
+    okMsg.textContent = 'บันทึกยอดบริจาคเรียบร้อย';
+    okMsg.style.display='block';
+    document.getElementById('entryForm').reset();
+  }catch(err){
+    errMsg.textContent = 'บันทึกไม่สำเร็จ: ' + err.message;
+    errMsg.style.display='block';
+  }finally{
+    submitBtn.disabled = false; submitBtn.textContent = '＋ บันทึกยอดบริจาค';
+  }
+});
+
+function listenRecent(uid){
+  const q = query(collection(db,'donations'), orderBy('createdAt','desc'), limit(15));
+  onSnapshot(q, (snap)=>{
+    const mine = [];
+    snap.forEach(d=>{
+      const v = d.data();
+      if (v.createdBy === uid) mine.push(v);
+    });
+    if (!mine.length){
+      recentBody.innerHTML = '<tr><td colspan="4" style="color:var(--text-muted);">ยังไม่มีรายการ</td></tr>';
+      return;
+    }
+    recentBody.innerHTML = mine.map(v => `
+      <tr>
+        <td>${v.createdAt?.toDate ? v.createdAt.toDate().toLocaleTimeString('th-TH') : '-'}</td>
+        <td>${escapeHtml(v.name)}</td>
+        <td>${(Number(v.amount)||0).toLocaleString('en-US')} บาท</td>
+        <td>${escapeHtml(v.note||'-')}</td>
+      </tr>`).join('');
+  });
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+</script>
+</body>
+</html>
