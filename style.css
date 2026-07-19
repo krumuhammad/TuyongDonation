@@ -1,0 +1,158 @@
+/* ===========================================================
+   ระบบบันทึกยอดบริจาคแบบ Real-time
+   Theme: "แผ่นป้ายทอง" — โคมไฟวัดยามค่ำคืน ตัวเลขแบบป้ายสนามบิน
+   =========================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Kanit:wght@400;600;700;800&family=Sarabun:wght@400;500;600&family=Space+Mono:wght@700&display=swap');
+
+:root{
+  --bg-deep:#0E1428;
+  --bg-panel:#161F42;
+  --bg-panel-2:#1D2A56;
+  --gold:#D9A441;
+  --gold-bright:#F4C868;
+  --red-accent:#A63446;
+  --green-ok:#4C9A6A;
+  --text-light:#F5EFE0;
+  --text-muted:#9AA3C4;
+  --line:#2B3768;
+  --radius:14px;
+  --shadow-gold: 0 0 24px rgba(217,164,65,.35);
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:
+    radial-gradient(ellipse at 50% -10%, #1B2554 0%, var(--bg-deep) 55%);
+  color:var(--text-light);
+  font-family:'Sarabun',sans-serif;
+  min-height:100vh;
+}
+
+h1,h2,h3,.display{
+  font-family:'Kanit',sans-serif;
+  font-weight:700;
+  letter-spacing:.01em;
+}
+
+.eyebrow{
+  font-family:'Kanit',sans-serif;
+  font-size:.8rem;
+  font-weight:600;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  color:var(--gold);
+}
+
+a{color:var(--gold-bright);}
+
+/* --- decorative gold border motif (paper-cut style) --- */
+.motif-divider{
+  height:10px;
+  background-image: radial-gradient(circle at 8px 0, transparent 7px, var(--gold) 7.5px, var(--gold) 8px, transparent 8.5px);
+  background-size:16px 10px;
+  background-repeat:repeat-x;
+  opacity:.55;
+}
+
+/* --- layout shells for staff pages --- */
+.shell{
+  max-width:1040px;
+  margin:0 auto;
+  padding:32px 20px 64px;
+}
+.topbar{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:14px 20px;
+  border-bottom:1px solid var(--line);
+  background:rgba(14,20,40,.6);
+  backdrop-filter:blur(6px);
+  position:sticky; top:0; z-index:20;
+}
+.topbar .brand{display:flex;align-items:center;gap:10px;font-family:'Kanit';font-weight:700;}
+.topbar .brand .dot{width:10px;height:10px;border-radius:50%;background:var(--gold);box-shadow:var(--shadow-gold);}
+.topbar nav a{margin-left:18px;color:var(--text-muted);text-decoration:none;font-size:.92rem;}
+.topbar nav a:hover{color:var(--gold-bright);}
+
+.card{
+  background:linear-gradient(180deg,var(--bg-panel),var(--bg-panel-2));
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  padding:24px;
+  margin-bottom:20px;
+}
+
+label{display:block;font-size:.85rem;color:var(--text-muted);margin-bottom:6px;}
+input,select,textarea{
+  width:100%;
+  padding:11px 13px;
+  border-radius:10px;
+  border:1px solid var(--line);
+  background:#0F1638;
+  color:var(--text-light);
+  font-family:'Sarabun',sans-serif;
+  font-size:1rem;
+  margin-bottom:16px;
+}
+input:focus,select:focus,textarea:focus{
+  outline:none;
+  border-color:var(--gold);
+  box-shadow:0 0 0 3px rgba(217,164,65,.18);
+}
+::placeholder{color:#5C669A;}
+
+button, .btn{
+  font-family:'Kanit',sans-serif;
+  font-weight:600;
+  font-size:.95rem;
+  padding:11px 22px;
+  border-radius:10px;
+  border:none;
+  cursor:pointer;
+  transition:transform .12s ease, box-shadow .12s ease;
+}
+button:focus-visible,.btn:focus-visible,a:focus-visible,input:focus-visible{
+  outline:2px solid var(--gold-bright);
+  outline-offset:2px;
+}
+.btn-primary{background:linear-gradient(180deg,var(--gold-bright),var(--gold));color:#20170A;}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:var(--shadow-gold);}
+.btn-ghost{background:transparent;border:1px solid var(--line);color:var(--text-light);}
+.btn-ghost:hover{border-color:var(--gold);}
+.btn-danger{background:var(--red-accent);color:#fff;}
+.btn-danger:hover{transform:translateY(-1px);}
+button:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+
+table{width:100%;border-collapse:collapse;font-size:.92rem;}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);}
+th{color:var(--text-muted);font-weight:600;font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;}
+tr:hover td{background:rgba(217,164,65,.05);}
+
+.badge{
+  display:inline-block;padding:3px 10px;border-radius:999px;
+  font-size:.75rem;font-weight:600;
+}
+.badge-admin{background:rgba(166,52,70,.25);color:#F0A0AC;}
+.badge-entry{background:rgba(76,154,106,.22);color:#8FDCAA;}
+
+.msg{padding:10px 14px;border-radius:10px;font-size:.9rem;margin-bottom:14px;display:none;}
+.msg-error{background:rgba(166,52,70,.18);color:#F5A5AF;border:1px solid rgba(166,52,70,.4);}
+.msg-ok{background:rgba(76,154,106,.18);color:#9EE6B7;border:1px solid rgba(76,154,106,.4);}
+
+.center-page{
+  min-height:100vh;
+  display:flex;align-items:center;justify-content:center;
+  padding:20px;
+}
+
+.stat-row{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px;}
+.stat{flex:1;min-width:150px;background:rgba(217,164,65,.06);border:1px solid var(--line);border-radius:10px;padding:14px 16px;}
+.stat .num{font-family:'Space Mono',monospace;font-size:1.5rem;color:var(--gold-bright);}
+.stat .lbl{font-size:.78rem;color:var(--text-muted);}
+
+@media (max-width:640px){
+  .topbar nav a{margin-left:10px;font-size:.82rem;}
+}
