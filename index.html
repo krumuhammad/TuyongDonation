@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ระบบแสดงยอดบริจาค</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=Prompt:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --navy:#0E2A55;
+    --blue-700:#123E8C;
+    --blue-600:#1B54BF;
+    --blue-500:#2C6CE0;
+    --gold-600:#C98A1A;
+    --gold-500:#E0A83A;
+    --bg:#F3F5FA;
+    --card:#FFFFFF;
+    --text:#152238;
+    --muted:#6C7688;
+    --border:#E5E9F1;
+    --green:#1F9D55;
+    --red:#D8434B;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Sarabun',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,.numfont{font-family:'Prompt',sans-serif;}
+  .wrap{max-width:900px;margin:0 auto;padding:0 20px 60px;}
+
+  /* Header */
+  header{
+    background:linear-gradient(135deg,var(--navy),var(--blue-600));
+    padding:22px 20px;
+    display:flex;align-items:center;justify-content:space-between;
+    color:#fff;
+    position:relative;
+  }
+  header .orgname{font-size:20px;font-weight:600;letter-spacing:.2px;}
+  .hdr-inner{max-width:900px;margin:0 auto;width:100%;display:flex;align-items:center;justify-content:space-between;}
+  .btn{
+    border:none;border-radius:10px;padding:10px 18px;font-size:14px;font-weight:600;
+    cursor:pointer;font-family:'Sarabun',sans-serif;transition:transform .12s ease, opacity .12s ease;
+  }
+  .btn:active{transform:scale(0.97);}
+  .btn-light{background:#fff;color:var(--blue-700);}
+  .btn-light:hover{opacity:.9;}
+  .btn-green{background:var(--green);color:#fff;}
+  .btn-red{background:var(--red);color:#fff;}
+  .btn-outline{background:transparent;border:1.5px solid var(--border);color:var(--text);}
+  .btn-outline:hover{background:var(--bg);}
+  .btn-ghost{background:rgba(255,255,255,.15);color:#fff;}
+  .btn-ghost:hover{background:rgba(255,255,255,.25);}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+
+  .admin-wrap{position:relative;display:flex;align-items:center;gap:10px;}
+  .admin-badge{font-size:13px;background:rgba(255,255,255,.15);padding:6px 12px;border-radius:20px;}
+  .menu{
+    position:absolute;top:calc(100% + 8px);right:0;background:#fff;border-radius:12px;
+    box-shadow:0 10px 30px rgba(14,42,85,.18);min-width:200px;overflow:hidden;z-index:20;
+    border:1px solid var(--border);
+  }
+  .menu button{
+    width:100%;text-align:right;background:none;border:none;padding:13px 16px;font-size:14px;
+    cursor:pointer;color:var(--text);font-family:'Sarabun',sans-serif;display:block;
+  }
+  .menu button:hover{background:var(--bg);}
+  .menu button.danger{color:var(--red);border-top:1px solid var(--border);}
+
+  /* Hero */
+  .hero{text-align:center;padding:44px 20px 30px;}
+  .hero .label{color:var(--muted);font-size:15px;margin-bottom:6px;}
+  .hero .amount{
+    font-size:64px;font-weight:700;color:var(--navy);line-height:1.1;
+    background:linear-gradient(135deg,var(--blue-700),var(--gold-600));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .hero .unit{color:var(--muted);font-size:16px;margin-top:4px;}
+
+  .card{
+    background:var(--card);border-radius:var(--radius);border:1px solid var(--border);
+    padding:22px;margin-bottom:20px;box-shadow:0 2px 10px rgba(14,42,85,.04);
+  }
+  .card h3{margin:0 0 14px;font-size:16px;display:flex;align-items:center;gap:8px;}
+  .channels{display:flex;flex-direction:column;gap:10px;}
+  .channel-row{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:12px 14px;background:var(--bg);border-radius:10px;font-size:14px;
+  }
+  .channel-row .lbl{color:var(--muted);}
+  .channel-row .val{font-weight:600;}
+  .empty-note{color:var(--muted);font-size:14px;text-align:center;padding:8px 0;}
+
+  .share-row{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;}
+  .share-link{color:var(--blue-600);font-size:14px;word-break:break-all;}
+  .copy-btn{font-size:12px;padding:6px 12px;}
+
+  /* Admin add form */
+  .add-form{display:flex;gap:10px;flex-wrap:wrap;}
+  .add-form input{
+    flex:1;min-width:120px;padding:12px 14px;border-radius:10px;border:1.5px solid var(--border);
+    font-size:14px;font-family:'Sarabun',sans-serif;
+  }
+  .add-form input:focus{outline:none;border-color:var(--blue-500);}
+
+  table{width:100%;border-collapse:collapse;font-size:14px;}
+  th{text-align:right;color:var(--muted);font-weight:600;padding:10px 8px;border-bottom:2px solid var(--border);font-size:13px;}
+  th:first-child,td:first-child{text-align:right;}
+  td{padding:14px 8px;border-bottom:1px solid var(--border);}
+  tr:last-child td{border-bottom:none;}
+  .donor{font-weight:600;}
+  .donor .by{color:var(--muted);font-weight:400;font-size:12px;display:block;margin-top:2px;}
+  .amt{font-weight:700;color:var(--navy);}
+  .del-btn{background:none;border:none;color:var(--red);cursor:pointer;font-size:16px;padding:4px 8px;border-radius:6px;}
+  .del-btn:hover{background:#fdecec;}
+
+  /* Modal */
+  .overlay{
+    position:fixed;inset:0;background:rgba(14,20,35,.5);display:flex;align-items:center;
+    justify-content:center;z-index:100;padding:20px;
+  }
+  .modal{
+    background:#fff;border-radius:16px;padding:26px;max-width:420px;width:100%;
+    max-height:85vh;overflow-y:auto;
+  }
+  .modal h2{margin:0 0 4px;font-size:19px;}
+  .modal .sub{color:var(--muted);font-size:13px;margin-bottom:18px;}
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px;}
+  .field input{
+    width:100%;padding:11px 13px;border-radius:9px;border:1.5px solid var(--border);
+    font-size:14px;font-family:'Sarabun',sans-serif;
+  }
+  .field input:focus{outline:none;border-color:var(--blue-500);}
+  .modal-actions{display:flex;gap:10px;margin-top:20px;}
+  .modal-actions .btn{flex:1;}
+  .err{color:var(--red);font-size:13px;margin-top:8px;}
+  .toast{
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--navy);
+    color:#fff;padding:12px 22px;border-radius:30px;font-size:14px;z-index:200;
+    box-shadow:0 8px 24px rgba(0,0,0,.2);
+  }
+  .admin-list-item{
+    display:flex;justify-content:space-between;align-items:center;padding:10px 0;
+    border-bottom:1px solid var(--border);font-size:14px;
+  }
+  .admin-list-item:last-child{border-bottom:none;}
+  .channel-edit-row{display:flex;gap:8px;margin-bottom:8px;align-items:center;}
+  .channel-edit-row input{flex:1;}
+  .icon-btn{background:none;border:none;cursor:pointer;color:var(--red);font-size:15px;padding:6px;}
+
+  .footer-credit{
+    text-align:center;color:var(--muted);font-size:13px;padding:10px 0 4px;
+  }
+
+  @media (max-width:600px){
+    .hero .amount{font-size:44px;}
+    .add-form{flex-direction:column;}
+    .add-form input{width:100%;}
+    table{font-size:12.5px;}
+    th,td{padding:10px 4px;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hdr-inner">
+    <div class="orgname" id="orgNameDisplay">กำลังโหลด...</div>
+    <div class="admin-wrap" id="adminArea"></div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="hero">
+    <div class="label">ยอดบริจาคสะสม</div>
+    <div class="amount numfont" id="totalAmount">0.00</div>
+    <div class="unit">บาท</div>
+  </div>
+
+  <div class="card">
+    <h3>📱 ช่องทางร่วมบริจาค</h3>
+    <div class="channels" id="channelsList"></div>
+  </div>
+
+  <div class="card" style="text-align:center;">
+    <h3 style="justify-content:center;">🔗 ลิ้งค์เพื่อแชร์</h3>
+    <div class="share-row">
+      <span class="share-link" id="shareLink"></span>
+      <button class="btn btn-outline copy-btn" onclick="copyLink()">คัดลอก</button>
+    </div>
+  </div>
+
+  <div class="card" id="addFormCard" style="display:none;">
+    <h3>✏️ บันทึกยอดบริจาค <span style="font-size:12px;background:var(--bg);padding:3px 10px;border-radius:20px;color:var(--muted);font-weight:400;" id="addFormBy"></span></h3>
+    <div class="add-form">
+      <input type="text" id="donorName" placeholder="ชื่อผู้บริจาค">
+      <input type="number" id="donorAmount" placeholder="จำนวนเงิน">
+      <input type="text" id="donorNote" placeholder="หมายเหตุ">
+      <button class="btn btn-green" onclick="addDonation()">บันทึก</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>📋 รายการบริจาคล่าสุด</h3>
+    <div style="overflow-x:auto;">
+    <table>
+      <thead>
+        <tr>
+          <th>วันที่</th><th>ชื่อ</th><th>ยอดเงิน</th><th>หมายเหตุ</th><th id="delHeader" style="display:none;"></th>
+        </tr>
+      </thead>
+      <tbody id="donationRows"></tbody>
+    </table>
+    <div class="empty-note" id="emptyNote" style="display:none;">ยังไม่มีรายการบริจาค</div>
+    </div>
+  </div>
+  <div class="footer-credit">พัฒนาเว็บไซต์โดย ครูมูฮัมหมัด หะยีมะลี</div>
+</div>
+
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>
+
+<script>
+/* ---------- Storage helpers (Claude artifact persistent storage) ---------- */
+const STORAGE_AVAILABLE = typeof window.storage !== 'undefined';
+async function storeGet(key, shared){
+  if(!STORAGE_AVAILABLE) return null;
+  try{ const r = await window.storage.get(key, shared); return r ? r.value : null; }
+  catch(e){ return null; }
+}
+async function storeSet(key, value, shared){
+  if(!STORAGE_AVAILABLE) return;
+  try{ await window.storage.set(key, value, shared); }catch(e){ console.error(e); }
+}
+
+/* ---------- State ---------- */
+let config = {
+  orgName: "โรงเรียนบ้านตูหยง",
+  channels: [],
+  admins: [{username:"admin", password:"admin123"}]
+};
+let donations = [];
+let currentAdmin = null; // {username} while logged in this session only
+
+/* ---------- Init ---------- */
+async function init(){
+  const cfgRaw = await storeGet('donation-config', true);
+  if(cfgRaw){ try{ config = JSON.parse(cfgRaw); }catch(e){} }
+  else { await storeSet('donation-config', JSON.stringify(config), true); }
+
+  const donRaw = await storeGet('donation-entries', true);
+  if(donRaw){ try{ donations = JSON.parse(donRaw); }catch(e){} }
+
+  document.getElementById('shareLink').textContent = window.location.href.split('#')[0].split('?')[0];
+  render();
+}
+
+async function saveConfig(){ await storeSet('donation-config', JSON.stringify(config), true); }
+async function saveDonations(){ await storeSet('donation-entries', JSON.stringify(donations), true); }
+
+/* ---------- Rendering ---------- */
+function thaiDate(iso){
+  const d = new Date(iso);
+  const be = d.getFullYear() + 543;
+  return `${d.getDate()}/${d.getMonth()+1}/${be}`;
+}
+function formatAmount(n){
+  return Number(n).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function render(){
+  document.getElementById('orgNameDisplay').textContent = config.orgName || "ระบบแสดงยอดบริจาค";
+  const total = donations.reduce((s,d)=>s+Number(d.amount||0),0);
+  document.getElementById('totalAmount').textContent = formatAmount(total);
+
+  const chWrap = document.getElementById('channelsList');
+  chWrap.innerHTML = "";
+  if(!config.channels || config.channels.length===0){
+    chWrap.innerHTML = `<div class="empty-note">-</div>`;
+  } else {
+    config.channels.forEach(c=>{
+      const row = document.createElement('div');
+      row.className = 'channel-row';
+      row.innerHTML = `<span class="lbl">${escapeHtml(c.label)}</span><span class="val">${escapeHtml(c.detail)}</span>`;
+      chWrap.appendChild(row);
+    });
+  }
+
+  renderAdminArea();
+  renderTable();
+  document.getElementById('addFormCard').style.display = currentAdmin ? 'block' : 'none';
+  if(currentAdmin) document.getElementById('addFormBy').textContent = currentAdmin.username;
+}
+
+function renderAdminArea(){
+  const area = document.getElementById('adminArea');
+  if(!currentAdmin){
+    area.innerHTML = `<button class="btn btn-light" onclick="openLogin()">เข้าสู่ระบบ</button>`;
+    return;
+  }
+  area.innerHTML = `
+    <span class="admin-badge">ผู้บันทึก: ${escapeHtml(currentAdmin.username)}</span>
+    <button class="btn btn-ghost" onclick="toggleMenu()">เมนูจัดการ ▾</button>
+  `;
+  const menuHost = document.createElement('div');
+  menuHost.id = 'adminMenu';
+  area.appendChild(menuHost);
+}
+
+let menuOpen = false;
+function toggleMenu(){
+  menuOpen = !menuOpen;
+  const host = document.getElementById('adminMenu');
+  if(!host) return;
+  if(!menuOpen){ host.innerHTML=''; return; }
+  host.innerHTML = `
+    <div class="menu">
+      <button onclick="openSettings()">ตั้งค่าองค์กร</button>
+      <button onclick="openAdmins()">จัดการสมาชิก</button>
+      <button onclick="exportExcel()">⬇ ดาวน์โหลด Excel</button>
+      <button class="danger" onclick="logout()">ออกจากระบบ</button>
+    </div>`;
+}
+document.addEventListener('click', (e)=>{
+  if(menuOpen && !e.target.closest('.admin-wrap')){ menuOpen=false; const h=document.getElementById('adminMenu'); if(h) h.innerHTML=''; }
+});
+
+function renderTable(){
+  const body = document.getElementById('donationRows');
+  body.innerHTML = "";
+  const sorted = [...donations].sort((a,b)=> new Date(b.date) - new Date(a.date));
+  document.getElementById('emptyNote').style.display = sorted.length ? 'none' : 'block';
+  document.getElementById('delHeader').style.display = currentAdmin ? 'table-cell' : 'none';
+  sorted.forEach(d=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${thaiDate(d.date)}</td>
+      <td class="donor">${escapeHtml(d.name||'-')}<span class="by">By: ${escapeHtml(d.addedBy||'-')}</span></td>
+      <td class="amt">${formatAmount(d.amount)}</td>
+      <td>${escapeHtml(d.note||'')}</td>
+      <td>${currentAdmin ? `<button class="del-btn" onclick="deleteDonation('${d.id}')">🗑</button>` : ''}</td>
+    `;
+    body.appendChild(tr);
+  });
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+/* ---------- Donations ---------- */
+async function addDonation(){
+  const name = document.getElementById('donorName').value.trim() || '-';
+  const amount = parseFloat(document.getElementById('donorAmount').value);
+  const note = document.getElementById('donorNote').value.trim();
+  if(!amount || amount<=0){ showToast('กรุณาระบุจำนวนเงินให้ถูกต้อง'); return; }
+  donations.push({
+    id: 'd'+Date.now()+Math.random().toString(36).slice(2,7),
+    date: new Date().toISOString(),
+    name, amount, note, addedBy: currentAdmin.username
+  });
+  await saveDonations();
+  document.getElementById('donorName').value='';
+  document.getElementById('donorAmount').value='';
+  document.getElementById('donorNote').value='';
+  render();
+  showToast('บันทึกยอดบริจาคแล้ว');
+}
+async function deleteDonation(id){
+  if(!confirm('ต้องการลบรายการนี้ใช่หรือไม่?')) return;
+  donations = donations.filter(d=>d.id!==id);
+  await saveDonations();
+  render();
+  showToast('ลบรายการแล้ว');
+}
+
+/* ---------- Auth ---------- */
+function openLogin(){
+  document.getElementById('modalRoot').innerHTML = `
+    <div class="overlay" onclick="if(event.target===this) closeModal()">
+      <div class="modal">
+        <h2>เข้าสู่ระบบผู้ดูแล</h2>
+        <div class="sub">สำหรับผู้บันทึกยอดบริจาคเท่านั้น</div>
+        <div class="field"><label>ชื่อผู้ใช้</label><input id="loginUser" type="text"></div>
+        <div class="field"><label>รหัสผ่าน</label><input id="loginPass" type="password"></div>
+        <div class="err" id="loginErr" style="display:none;"></div>
+        <div class="modal-actions">
+          <button class="btn btn-outline" onclick="closeModal()">ยกเลิก</button>
+          <button class="btn btn-green" onclick="doLogin()">เข้าสู่ระบบ</button>
+        </div>
+      </div>
+    </div>`;
+}
+function doLogin(){
+  const u = document.getElementById('loginUser').value.trim();
+  const p = document.getElementById('loginPass').value;
+  const found = (config.admins||[]).find(a=>a.username===u && a.password===p);
+  if(!found){
+    const err = document.getElementById('loginErr');
+    err.textContent = 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';
+    err.style.display='block';
+    return;
+  }
+  currentAdmin = {username: found.username};
+  closeModal();
+  render();
+  showToast('เข้าสู่ระบบสำเร็จ');
+}
+function logout(){
+  currentAdmin = null;
+  menuOpen = false;
+  render();
+}
+
+/* ---------- Settings modal ---------- */
+function openSettings(){
+  menuOpen=false;
+  const chRows = (config.channels||[]).map((c,i)=>`
+    <div class="channel-edit-row">
+      <input type="text" value="${escapeHtml(c.label)}" placeholder="ชื่อช่องทาง" id="chLabel${i}">
+      <input type="text" value="${escapeHtml(c.detail)}" placeholder="รายละเอียด" id="chDetail${i}">
+      <button class="icon-btn" onclick="removeChannelRow(${i})">✕</button>
+    </div>`).join('');
+  document.getElementById('modalRoot').innerHTML = `
+    <div class="overlay" onclick="if(event.target===this) closeModal()">
+      <div class="modal">
+        <h2>ตั้งค่าองค์กร</h2>
+        <div class="sub">แก้ไขชื่อองค์กรและช่องทางรับบริจาค</div>
+        <div class="field"><label>ชื่อองค์กร</label><input id="setOrgName" type="text" value="${escapeHtml(config.orgName)}"></div>
+        <div class="field">
+          <label>ช่องทางร่วมบริจาค</label>
+          <div id="channelRows">${chRows}</div>
+          <button class="btn btn-outline" style="margin-top:6px;font-size:13px;" onclick="addChannelRow()">+ เพิ่มช่องทาง</button>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-outline" onclick="closeModal()">ยกเลิก</button>
+          <button class="btn btn-green" onclick="saveSettingsModal()">บันทึก</button>
+        </div>
+      </div>
+    </div>`;
+}
+let tempChannels = null;
+function addChannelRow(){
+  config.channels = config.channels || [];
+  config.channels.push({label:'', detail:''});
+  openSettings();
+}
+function removeChannelRow(i){
+  config.channels.splice(i,1);
+  openSettings();
+}
+async function saveSettingsModal(){
+  config.orgName = document.getElementById('setOrgName').value.trim() || config.orgName;
+  const rows = document.querySelectorAll('.channel-edit-row');
+  const newChannels = [];
+  rows.forEach((r,i)=>{
+    const label = document.getElementById('chLabel'+i).value.trim();
+    const detail = document.getElementById('chDetail'+i).value.trim();
+    if(label || detail) newChannels.push({label, detail});
+  });
+  config.channels = newChannels;
+  await saveConfig();
+  closeModal();
+  render();
+  showToast('บันทึกการตั้งค่าแล้ว');
+}
+
+/* ---------- Manage admins modal ---------- */
+function openAdmins(){
+  menuOpen=false;
+  const rows = (config.admins||[]).map((a,i)=>`
+    <div class="admin-list-item">
+      <span>${escapeHtml(a.username)}</span>
+      ${config.admins.length>1 ? `<button class="icon-btn" onclick="removeAdmin(${i})">✕ ลบ</button>` : '<span style="color:var(--muted);font-size:12px;">บัญชีหลัก</span>'}
+    </div>`).join('');
+  document.getElementById('modalRoot').innerHTML = `
+    <div class="overlay" onclick="if(event.target===this) closeModal()">
+      <div class="modal">
+        <h2>จัดการสมาชิกผู้ดูแล</h2>
+        <div class="sub">เพิ่มหรือลบผู้ที่สามารถบันทึกยอดบริจาคได้</div>
+        <div id="adminListWrap">${rows}</div>
+        <div class="field" style="margin-top:16px;"><label>ชื่อผู้ใช้ใหม่</label><input id="newAdminUser" type="text"></div>
+        <div class="field"><label>รหัสผ่าน</label><input id="newAdminPass" type="password"></div>
+        <div class="err" id="adminErr" style="display:none;"></div>
+        <div class="modal-actions">
+          <button class="btn btn-outline" onclick="closeModal()">ปิด</button>
+          <button class="btn btn-green" onclick="addAdmin()">เพิ่มสมาชิก</button>
+        </div>
+      </div>
+    </div>`;
+}
+async function addAdmin(){
+  const u = document.getElementById('newAdminUser').value.trim();
+  const p = document.getElementById('newAdminPass').value;
+  if(!u || !p){
+    const err = document.getElementById('adminErr');
+    err.textContent = 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน';
+    err.style.display = 'block';
+    return;
+  }
+  if(config.admins.find(a=>a.username===u)){
+    const err = document.getElementById('adminErr');
+    err.textContent = 'มีชื่อผู้ใช้นี้อยู่แล้ว';
+    err.style.display = 'block';
+    return;
+  }
+  config.admins.push({username:u, password:p});
+  await saveConfig();
+  openAdmins();
+  showToast('เพิ่มสมาชิกแล้ว');
+}
+async function removeAdmin(i){
+  config.admins.splice(i,1);
+  await saveConfig();
+  openAdmins();
+}
+
+/* ---------- Modal / toast utils ---------- */
+function closeModal(){ document.getElementById('modalRoot').innerHTML=''; }
+function showToast(msg){
+  const root = document.getElementById('toastRoot');
+  root.innerHTML = `<div class="toast">${escapeHtml(msg)}</div>`;
+  setTimeout(()=>{ root.innerHTML=''; }, 2200);
+}
+function copyLink(){
+  const text = document.getElementById('shareLink').textContent;
+  navigator.clipboard.writeText(text).then(()=>showToast('คัดลอกลิงก์แล้ว')).catch(()=>showToast('คัดลอกไม่สำเร็จ'));
+}
+
+/* ---------- Export Excel ---------- */
+function exportExcel(){
+  menuOpen = false;
+  if(typeof XLSX === 'undefined'){ showToast('ไม่สามารถโหลดตัวสร้างไฟล์ Excel ได้'); return; }
+  const data = donations
+    .sort((a,b)=> new Date(b.date)-new Date(a.date))
+    .map(d=>({
+      'วันที่': thaiDate(d.date),
+      'ชื่อผู้บริจาค': d.name,
+      'จำนวนเงิน': Number(d.amount),
+      'หมายเหตุ': d.note||'',
+      'บันทึกโดย': d.addedBy||''
+    }));
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'รายการบริจาค');
+  XLSX.writeFile(wb, `รายการบริจาค_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+init();
+</script>
+</body>
+</html>
